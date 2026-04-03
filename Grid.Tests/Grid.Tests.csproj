@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Pathfinder\Pathfinder.csproj" />
     <ProjectReference Include="..\Grid\Grid.csproj" />
   </ItemGroup>
 
