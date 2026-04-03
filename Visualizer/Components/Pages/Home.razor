@@ -21,8 +21,9 @@
         {
             var node = grid.GetNode(x, y);
            <div class="node-tile @GetNodeClass(node)"
-                  style="width: 40px; height: 40px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center;">
-                  @(node == currentNode ? "🚜" : "")
+                @onclick="() => ToggleNode(node)"
+                style="width: 40px; height: 40px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center;">
+                @(node == currentNode ? "🚜" : "")
            </div>
         }
     }
@@ -57,8 +58,14 @@
         var finder = new Pathfinder(grid);
         var mover = new MovementManager();
 
+        var startNode = currentNode ?? grid.GetNode(0,0);
         // Find path from Top-Left to Bottom-Right
-        path = finder.FindPath(grid.GetNode(0, 0), grid.GetNode(14, 9));
+        path = finder.FindPath(startNode, grid.GetNode(14, 9));
+
+        if(path.Count == 0){
+            status = "No Path Found";
+            return;
+        }
 
         isMoving = true;
         cts = new CancellationTokenSource();
@@ -101,6 +108,31 @@
         _ => path.Contains(node) ? "node-path" : "node-traversable"
     };
 
+    private void ToggleNode(Node node){
+        if(node == currentNode){
+            return;
+        }
+
+        // Cycle trhu states
+        node.State = node.State switch{
+            CellState.Traversable => CellState.Blocked,
+            CellState.Blocked => CellState.Restricted, 
+            _ => CellState.Traversable
+        };
+
+        if(isMoving && path.Contains(node)){
+            TriggerReRoute();
+        }
+    }
+
+    private async void TriggerReRoute(){
+        status = "Re-calculating path...";
+        cts?.Cancel();
+
+        await Task.Delay(100);
+
+        await RunSimulation();
+    }
     public void Dispose() => cts?.Dispose();
 }
 
