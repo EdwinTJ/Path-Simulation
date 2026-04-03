@@ -2,6 +2,24 @@
 
 <PageTitle>Home</PageTitle>
 
-<h1>Hello, world!</h1>
+<h1>Grid Preview</h1>
 
-Welcome to your new app.
+<p>This is a sample grid rendered directly from <code>GridManager</code>.</p>
+
+<pre class="grid-preview">@Grid</pre>
+
+@code {
+	private static GridManager CreateGrid()
+	{
+		var grid = new GridManager(10, 6);
+		grid.GetNode(2, 1).State = CellState.Blocked;
+		grid.GetNode(3, 1).State = CellState.Blocked;
+		grid.GetNode(6, 3).State = CellState.Restricted;
+		grid.GetNode(7, 3).State = CellState.Restricted;
+		grid.GetNode(8, 4).State = CellState.Blocked;
+
+		return grid;
+	}
+
+	private GridManager Grid { get; } = CreateGrid();
+}
