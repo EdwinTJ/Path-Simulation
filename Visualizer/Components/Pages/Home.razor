@@ -1,25 +1,114 @@
 ﻿@page "/"
+@rendermode InteractiveServer
+@implements IDisposable
 
 <PageTitle>Home</PageTitle>
 
 <h1>Grid Preview</h1>
 
-<p>This is a sample grid rendered directly from <code>GridManager</code>.</p>
-
-<pre class="grid-preview">@Grid</pre>
+<div class="controls mb-4">
+    <button class="btn btn-primary" @onclick="RunSimulation" disabled="@isMoving">Start Simulation</button>
+    <button class="btn btn-danger" @onclick="TriggerEStop" disabled="@(!isMoving)">E-Stop</button>
+    <button class="btn btn-secondary" @onclick="Reset">Reset</button>
+</div>
+<div>
+    <p class="status-message">Status: @status</p>
+</div>
+<div class="grid-container" style="display: grid; grid-template-columns: repeat(@grid.Width, 40px); gap: 2px;">
+    @for (int y = 0; y < grid.Height; y++)
+    {
+        @for (int x = 0; x < grid.Width; x++)
+        {
+            var node = grid.GetNode(x, y);
+           <div class="node-tile @GetNodeClass(node)"
+                  style="width: 40px; height: 40px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center;">
+                  @(node == currentNode ? "🚜" : "")
+           </div>
+        }
+    }
+</div>
 
 @code {
-	private static GridManager CreateGrid()
-	{
-		var grid = new GridManager(10, 6);
-		grid.GetNode(2, 1).State = CellState.Blocked;
-		grid.GetNode(3, 1).State = CellState.Blocked;
-		grid.GetNode(6, 3).State = CellState.Restricted;
-		grid.GetNode(7, 3).State = CellState.Restricted;
-		grid.GetNode(8, 4).State = CellState.Blocked;
 
-		return grid;
-	}
+    private GridManager grid = new(15, 10);
+    private Node? currentNode;
+    private List<Node> path = new();
+    private bool isMoving = false;
+    private CancellationTokenSource? cts;
+    private string status = "Ready";
 
-	private GridManager Grid { get; } = CreateGrid();
+    protected override void OnInitialized()
+    {
+        // Set up initial obstacles
+        grid.GetNode(2, 1).State = CellState.Blocked;
+        grid.GetNode(3, 1).State = CellState.Blocked;
+        grid.GetNode(4, 1).State = CellState.Blocked;
+        grid.GetNode(9, 7).State = CellState.Blocked;
+        grid.GetNode(6, 1).State = CellState.Blocked;
+        grid.GetNode(6, 3).State = CellState.Restricted;
+        grid.GetNode(5, 3).State = CellState.Restricted;
+        grid.GetNode(4, 3).State = CellState.Restricted;
+        currentNode = grid.GetNode(0, 0);
+    }
+
+    private async Task RunSimulation()
+    {
+        status = "Moving..";
+        var finder = new Pathfinder(grid);
+        var mover = new MovementManager();
+
+        // Find path from Top-Left to Bottom-Right
+        path = finder.FindPath(grid.GetNode(0, 0), grid.GetNode(14, 9));
+
+        isMoving = true;
+        cts = new CancellationTokenSource();
+
+        mover.OnVehicleMoved += (node) =>
+        {
+            currentNode = node;
+            InvokeAsync(StateHasChanged);
+            status = "Destination Reached";
+        };
+
+        try
+        {
+            await mover.StartSimulationAsync(path, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // E-Stop
+            status = "!!! E-STOP Triggered !!!";
+        }
+        finally
+        {
+            isMoving = false;
+        }
+    }
+
+    private void TriggerEStop() => cts?.Cancel();
+
+    private void Reset()
+    {
+        currentNode = grid.GetNode(0, 0);
+        path.Clear();
+        StateHasChanged();
+    }
+
+    private string GetNodeClass(Node node) => node.State switch
+    {
+        CellState.Blocked => "node-blocked",
+        CellState.Restricted => "node-restricted",
+        _ => path.Contains(node) ? "node-path" : "node-traversable"
+    };
+
+    public void Dispose() => cts?.Dispose();
 }
+
+<style>
+    .node-tile { background-color: #ffffff; transition: background-color 0.2s; } 
+	.node-blocked { background-color: #333; }
+	.node-restricted { background-color: #ffd800; }
+	.node-path { background-color: #90ee90; }
+	.node-start { background-color: #007bff; color: white; }
+	.node-end { background-color: #dc3545; color: white; }
+</style>

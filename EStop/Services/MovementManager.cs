@@ -7,7 +7,7 @@ namespace EStop.Services;
 
 public class MovementManager
 {
-    public event Action<Node>? OnVehivleMoved;
+    public event Action<Node>? OnVehicleMoved;
 
     public async Task StartSimulationAsync(List<Node> path, CancellationToken token)
     {
@@ -19,7 +19,7 @@ public class MovementManager
                 token.ThrowIfCancellationRequested();
 
                 // Update Position
-                OnVehivleMoved?.Invoke(node);
+                OnVehicleMoved?.Invoke(node);
 
                 // Delay
                 await Task.Delay(500, token);

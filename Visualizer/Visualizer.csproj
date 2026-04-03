@@ -9,6 +9,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Grid\Grid.csproj" />
+    <ProjectReference Include="..\Pathfinder\Pathfinder.csproj" />
+    <ProjectReference Include="..\EStop\EStop.csproj" />
   </ItemGroup>
 
 </Project>
