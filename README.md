@@ -1,6 +1,6 @@
 # Autonomous Path Simulator
 
-A high performance robotics pathfinding simulation buildt with .Net and Blazor Server. The project aim to demostrate the connection between web interface and logic.
+A high performance robotics pathfinding simulation build with .Net and Blazor Server. The project aim to demostrate the connection between web interface and logic.
 
 ## Project Architecture
 

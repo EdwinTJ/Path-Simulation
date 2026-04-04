@@ -107,7 +107,7 @@
 
         try
         {
-            await mover.StartSimulationAsync(path, cts.Token);
+            await mover.StartSimulationAsync(new List<Node>(path), cts.Token);
         }
         catch (OperationCanceledException)
         {
