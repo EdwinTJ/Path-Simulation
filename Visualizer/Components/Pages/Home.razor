@@ -6,6 +6,25 @@
 
 <h1>Grid Preview</h1>
 
+<div class="telemetry-dashboard mb-4">
+    <div class="stat-card">
+        <label>POSITION</label>
+        <div class="value">(@(currentNode?.X ?? 0), @(currentNode?.Y ?? 0))</div>
+    </div>
+    <div class="stat-card">
+        <label>G-Cost</label>
+        <div class="value">@totalGCost.ToString("F1")</div>
+    </div>
+    <div class="stat-card">
+        <label>H-Score</label>
+        <div class="value">@currentHScore.ToString("F1")</div>
+    </div>
+    <div class="stat-card status @(status.Contains("!!!") ? "emergency" : "")">
+        <label>System Status</label>
+        <div class="value">@status</div>
+    </div>
+</div>
+
 <div class="controls mb-4">
     <button class="btn btn-primary" @onclick="RunSimulation" disabled="@isMoving">Start Simulation</button>
     <button class="btn btn-danger" @onclick="TriggerEStop" disabled="@(!isMoving)">E-Stop</button>
@@ -37,6 +56,9 @@
     private bool isMoving = false;
     private CancellationTokenSource? cts;
     private string status = "Ready";
+    private float totalGCost = 0;
+    private float currentHScore = 0;
+    private Node targetNode;
 
     protected override void OnInitialized()
     {
@@ -49,12 +71,14 @@
         grid.GetNode(6, 3).State = CellState.Restricted;
         grid.GetNode(5, 3).State = CellState.Restricted;
         grid.GetNode(4, 3).State = CellState.Restricted;
+        targetNode = grid.GetNode(14,9);
         currentNode = grid.GetNode(0, 0);
     }
 
     private async Task RunSimulation()
     {
         status = "Moving..";
+        totalGCost = 0;
         var finder = new Pathfinder(grid);
         var mover = new MovementManager();
 
@@ -72,7 +96,11 @@
 
         mover.OnVehicleMoved += (node) =>
         {
+            if(currentNode != null){
+                totalGCost += CalculateStepCost(currentNode,node);
+            }
             currentNode = node;
+            currentHScore = CalculateHeuristic(node,targetNode);
             InvokeAsync(StateHasChanged);
             status = "Destination Reached";
         };
@@ -133,10 +161,66 @@
 
         await RunSimulation();
     }
+
+    private float CalculateHeuristic(Node a, Node b){
+        int dx = Math.Abs(a.X - b.X);
+        int dy = Math.Abs(a.Y - b.Y);
+
+        return dx > dy ? 1.41f * dy + (dx - dy) : 1.41f * dx + (dy - dx);
+    }
+
+    private float CalculateStepCost(Node from, Node to){
+        float baseDist = (from.X != to.X && from.Y != to.Y) ? 1.41f : 1.0f;
+        return baseDist * (to.State == CellState.Restricted ? 5.0f : 1.0f);
+    }
+
     public void Dispose() => cts?.Dispose();
 }
 
 <style>
+    .telemetry-dashboard {
+        display: flex;
+        gap: 15px;
+        background: #f1f3f5;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #dee2e6;
+    }
+
+    .stat-card {
+        flex: 1;
+        background: white;
+        padding: 10px;
+        border-radius: 4px;
+        border-left: 4px solid #007bff;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .stat-card label {
+        display: block;
+        font-size: 0.7rem;
+        font-weight: bold;
+        color: #6c757d;
+        text-transform: uppercase;
+        margin-bottom: 5px;
+    }
+
+    .stat-card .value {
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 1.2rem;
+        font-weight: bold;
+        color: #212529;
+    }
+
+    .stat-card.status.emergency {
+        border-left-color: #dc3545;
+        background-color: #fff5f5;
+    }
+
+    .stat-card.status.emergency .value {
+        color: #dc3545;
+    }
+    
     .node-tile { background-color: #ffffff; transition: background-color 0.2s; } 
 	.node-blocked { background-color: #333; }
 	.node-restricted { background-color: #ffd800; }
