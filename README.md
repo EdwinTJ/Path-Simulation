@@ -1,53 +1,99 @@
-# Autonomous Path Simulator
+# Autonomous Path Simulator — Distributed Swarm Edition
 
-A high-performance robotics pathfinding simulation built with .NET and Blazor Server. The project demonstrates the seamless connection between a web interface and core pathfinding logic.
+A high-performance robotics pathfinding simulation built with .NET and Blazor Server. The project has evolved from a single-process simulation into a **distributed swarm architecture** — mirroring how real-world warehouse robot systems (like Amazon Kiva) operate.
 
-## Project Architecture
+## Architecture: "The Tower & The Fleet"
 
-Designed using `Separation of Concerns`, the system is split into four distinct layers to ensure the core pathfinding logic can be tested and deployed independently of the UI:
+The system is split into three distinct roles communicating over **SignalR WebSockets** in real time:
 
-- `Grid`: The "Domain" layer. Manages coordinate mapping, node states (Traversable, Blocked, Restricted), and neighbor detection.
-- `Pathfinder`: The "Engine". Implements the A* algorithm using an optimized PriorityQueue and Octile distance metrics.
-- `EStop`: The "Safety" layer. Implements the Cooperative Cancellation pattern for zero-latency vehicle halts.
-- `Visualizer`: The "Presentation" layer. A Blazor Server App that renders the simulation in real-time.
+```
+┌──────────────────┐        SignalR        ┌──────────────────────┐
+│  TractorDriver   │ ─── ReportPosition ──▶│  TrafficControl API  │
+│  (The Fleet)     │ ◀── TractorJoined ─── │  (The Tower)         │
+│  n instances     │                       │  port :5259          │
+└──────────────────┘                       └──────────┬───────────┘
+                                                      │ UpdateFleet
+                                                      ▼
+                                           ┌──────────────────────┐
+                                           │  Visualizer          │
+                                           │  (The Monitor)       │
+                                           │  port :5206          │
+                                           └──────────────────────┘
+```
+
+### Projects
+
+| Project | Role | Type |
+|---|---|---|
+| `Grid` | Domain layer — coordinate mapping, node states | Class Library |
+| `Pathfinder` | A* engine — optimal path calculation | Class Library |
+| `EStop` | Safety layer — cooperative cancellation | Class Library |
+| `Swarm.Protocol` | Shared data contracts (DTOs) between Tower and Fleet | Class Library |
+| `TrafficControl` | The Tower — central SignalR hub, holds master fleet state | ASP.NET Core Web API |
+| `TractorDriver` | The Fleet — autonomous agent, drives itself using A* | Console App |
+| `Visualizer` | The Monitor — Blazor Server dashboard, renders live data | Blazor Server App |
+
+---
 
 ## Key Features
 
-1. **Intelligent A* Pathfinding**
-The algorithm doesn't just find a path; it calculates the optimal route by weighing terrain difficulty:
-- `Blocked`: Impassable obstacles (Fences, Buildings).
-- `Restricted`: High-cost terrain (Mud, Sand). The vehicle weighs the "cost" of driving through restricted areas vs. taking a longer detour.
-- `Octile Distance`: Optimized for 8-way movement, correctly calculating the cost of diagonal travel (1.41) vs. straight travel (1.0).
+### 1. Distributed Swarm via SignalR
+The system uses **ASP.NET Core SignalR** WebSockets to coordinate the fleet in real time:
+- `RegisterTractor`: A tractor signs in to the Tower when it starts.
+- `ReportPosition`: Each tractor broadcasts its position every 500ms.
+- `UpdateFleet`: The Tower fans out the full fleet state to all connected dashboards.
+- `JoinDashboard`: The Visualizer subscribes to a dedicated group to receive live updates without spamming other tractors.
 
-2. **Safety-Critical Emergency Stop (E-Stop)**
-Modeled after real-world robotics protocols, the E-Stop uses a `CancellationTokenSource`:
-- `Immediate Interruption`: Calling .Cancel() interrupts the Task.Delay and stops the movement loop instantly.
-- `Exception-Driven Safety`: Uses `OperationCanceledException` to ensure the vehicle never reaches an "undefined state" after a stop signal.
-- `Thread-Safe Execution`: Creates a copy of the path before simulation to prevent collection modification errors during runtime.
+### 2. Autonomous Tractor Agents
+Each `TractorDriver` instance is a self-contained agent that:
+- Generates its own unique ID (Guid) on boot.
+- Picks random destinations on a 20×20 grid.
+- Calculates its own path using A* via the `Pathfinder` library.
+- Reports each step to the Tower and rests 2 seconds between jobs.
+- Reconnects automatically if the Tower goes offline.
 
-3. **Interactive Grid Manipulation**
-Click on any tile during or before simulation to:
-- Toggle between `Traversable`, `Blocked`, and `Restricted` states.
-- Trigger automatic path recalculation when obstacles are placed on the active path.
-- Real-time updates without interrupting the simulation flow.
+Run multiple instances in parallel to simulate a real fleet.
 
-4. **Real-Time Telemetry Dashboard**
-Live monitoring of vehicle movement and pathfinding metrics:
-- `Position`: Current X, Y coordinates on the grid.
-- `G-Cost`: Cumulative movement cost from start to current position.
-- `H-Score`: Heuristic distance to target destination.
-- `System Status`: Live status updates (Ready, Moving, E-Stop Triggered, Path Recalculation).
+### 3. Intelligent A* Pathfinding
+The algorithm calculates the optimal route by weighing terrain difficulty:
+- `Blocked`: Impassable obstacles (fences, buildings).
+- `Restricted`: High-cost terrain (mud, sand) — the vehicle weighs detour cost vs. terrain penalty.
+- `Octile Distance`: Optimized for 8-way movement; diagonal travel costs 1.41 vs. 1.0 straight.
 
-5. **Decoupled Logic & Testing**
-The system is built to be "headless." The pathfinder doesn't know the UI exists:
-- `Automated Unit Testing`: Verified via xUnit to ensure the algorithm handles "walls" and "edge cases" before visual development began.
-- `Scalability`: The logic libraries could be ported to a console-based controller or a desktop app without changing a single line of code.
+### 4. Swarm Monitor Dashboard (`/swarm`)
+A live Blazor page that acts as a "dumb terminal" — it only renders what the Tower sends:
+- **Connection status** indicator with auto-retry if the Tower is offline.
+- **Fleet statistics** — active tractors, moving, idle, blocked counts.
+- **Live 20×20 grid** — tractor positions update in real time; collision warnings shown when multiple tractors share a cell.
+- **Fleet details table** — per-tractor ID, coordinates, status badge, and battery level bar.
+
+### 5. Single-Tractor Simulator (`/`)
+The original interactive simulation remains on the home page:
+- A* pathfinding from (0,0) to (14,9) on a 15×10 grid.
+- Click tiles to toggle Traversable → Blocked → Restricted states.
+- Live path recalculation when obstacles are placed on the active path.
+- Real-time telemetry: position, G-Cost, H-Score, system status.
+
+### 6. Safety-Critical Emergency Stop (E-Stop)
+Modeled after real-world robotics protocols using `CancellationTokenSource`:
+- **Immediate interruption**: `.Cancel()` stops the movement loop instantly.
+- **Exception-driven safety**: `OperationCanceledException` ensures the vehicle never reaches an undefined state.
+- **Thread-safe execution**: Path is copied before simulation to prevent collection modification errors.
+
+---
 
 ## Tech Stack
-- Language: C#/.NET
-- UI Framework: Blazor Interactive Server
-- Testing: xUnit
-- Algorithms: A*Search, Octile Distance
+
+| | |
+|---|---|
+| Language | C# / .NET 10 |
+| UI Framework | Blazor Interactive Server |
+| Real-Time Transport | ASP.NET Core SignalR (WebSockets) |
+| Pathfinding | A* with Octile Distance |
+| Testing | xUnit |
+| Concurrency | `ConcurrentDictionary`, `CancellationToken` |
+
+---
 
 ## Installation & Running
 
@@ -68,18 +114,40 @@ The system is built to be "headless." The pathfinder doesn't know the UI exists:
    dotnet test
    ```
 
-3. **Launch the simulator**
+3. **Start the Tower** (TrafficControl API)
+   ```bash
+   dotnet run --project TrafficControl
+   # Listening on http://localhost:5259
+   ```
+
+4. **Launch the Visualizer** (in a second terminal)
    ```bash
    dotnet watch run --project Visualizer
+   # Open http://localhost:5206
    ```
-   The application will start on `http://localhost:5206`
+
+5. **Deploy the Fleet** (open one terminal per tractor — run as many as you want)
+   ```bash
+   dotnet run --project TractorDriver
+   dotnet run --project TractorDriver
+   dotnet run --project TractorDriver
+   # Each instance is a unique autonomous tractor
+   ```
+
+---
 
 ## Usage
 
-1. **Start Simulation**: Click "Start Simulation" to begin pathfinding from the top-left (0, 0) to the bottom-right (14, 9).
-2. **Modify the Grid**: Click any tile during simulation to toggle its state (Traversable → Blocked → Restricted → Traversable).
-3. **E-Stop**: Click "E-Stop" to halt the vehicle immediately.
-4. **Reset**: Click "Reset" to clear the path and vehicle position for a new simulation.
-5. **Monitor Status**: Watch the telemetry dashboard for real-time position, costs, and system status updates.
+### Swarm Monitor (`/swarm`)
+1. Start the **Tower** first, then open the Visualizer.
+2. Navigate to **Swarm Monitor** in the nav menu.
+3. The page auto-connects to the Tower — status shows green when live.
+4. Start one or more **TractorDriver** instances to populate the fleet.
+5. Watch tractors appear on the grid and move in real time.
+6. Hover over a tractor icon to see its ID, battery level, and status.
 
-
+### Single-Tractor Simulator (`/`)
+1. Click **Start Simulation** to pathfind from (0,0) to (14,9).
+2. Click any tile to toggle its state (Traversable → Blocked → Restricted).
+3. Click **E-Stop** to halt the vehicle immediately.
+4. Click **Reset** to clear the path and return to start.

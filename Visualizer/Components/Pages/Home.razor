@@ -58,7 +58,7 @@
     private string status = "Ready";
     private float totalGCost = 0;
     private float currentHScore = 0;
-    private Node targetNode;
+    private Node? targetNode;
 
     protected override void OnInitialized()
     {
@@ -100,7 +100,7 @@
                 totalGCost += CalculateStepCost(currentNode,node);
             }
             currentNode = node;
-            currentHScore = CalculateHeuristic(node,targetNode);
+            currentHScore = targetNode != null ? CalculateHeuristic(node, targetNode) : 0;
             InvokeAsync(StateHasChanged);
             status = "Destination Reached";
         };

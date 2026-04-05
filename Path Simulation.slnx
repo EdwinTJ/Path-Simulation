@@ -3,5 +3,8 @@
   <Project Path="Grid.Tests/Grid.Tests.csproj" />
   <Project Path="Grid/Grid.csproj" />
   <Project Path="Pathfinder/Pathfinder.csproj" />
+  <Project Path="Swarm.Protocol/Swarm.Protocol.csproj" />
+  <Project Path="TractorDriver/TractorDriver.csproj" />
+  <Project Path="TrafficControl/TrafficControl.csproj" />
   <Project Path="Visualizer/Visualizer.csproj" />
 </Solution>

@@ -1,0 +1,368 @@
+@page "/swarm"
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+@using Microsoft.AspNetCore.SignalR.Client
+@using global::Swarm.Protocol
+
+<PageTitle>Swarm Monitor</PageTitle>
+
+<div class="swarm-container">
+    <h1>🚜 Swarm Monitor</h1>
+
+    <div class="connection-status">
+        <span class="status-indicator @(IsConnected ? "connected" : "disconnected")"></span>
+        @if (IsConnected)
+        {
+            <span>Connected to Tower</span>
+        }
+        else if (ConnectionError != null)
+        {
+            <span class="text-danger">@ConnectionError — retrying every 3s...</span>
+        }
+        else
+        {
+            <span>Connecting to Tower...</span>
+        }
+    </div>
+
+    <div class="fleet-stats mb-4">
+        <div class="stat-card">
+            <label>ACTIVE TRACTORS</label>
+            <div class="value">@Fleet.Count</div>
+        </div>
+        <div class="stat-card">
+            <label>MOVING</label>
+            <div class="value">@Fleet.Values.Count(t => t.Status == "Moving")</div>
+        </div>
+        <div class="stat-card">
+            <label>IDLE</label>
+            <div class="value">@Fleet.Values.Count(t => t.Status == "Idle")</div>
+        </div>
+        <div class="stat-card">
+            <label>BLOCKED</label>
+            <div class="value">@Fleet.Values.Count(t => t.Status == "Blocked")</div>
+        </div>
+    </div>
+
+    <div class="grid-viewport">
+        <div class="swarm-grid" style="display: grid; grid-template-columns: repeat(20, 30px); gap: 1px; background: #f0f0f0; padding: 10px;">
+            @for (int y = 0; y < 20; y++)
+            {
+                @for (int x = 0; x < 20; x++)
+                {
+                    var tractorsHere = Fleet.Values.Where(t => t.X == x && t.Y == y).ToList();
+                    <div class="swarm-cell @(tractorsHere.Any() ? "occupied" : "")"
+                         style="width: 30px; height: 30px; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; background: white; position: relative;">
+                        @if (tractorsHere.Count == 1)
+                        {
+                            <div class="tractor-icon" title="@tractorsHere[0].Id">
+                                🚜
+                                <div class="tractor-tooltip">
+                                    <small>@tractorsHere[0].Id.ToString().Substring(0, 8)</small><br/>
+                                    <small>Battery: @tractorsHere[0].BatteryLevel.ToString("F0")%</small><br/>
+                                    <small>Status: @tractorsHere[0].Status</small>
+                                </div>
+                            </div>
+                        }
+                        else if (tractorsHere.Count > 1)
+                        {
+                            <div class="tractor-stack" title="@string.Join(", ", tractorsHere.Select(t => t.Id.ToString().Substring(0, 8)))">
+                                ⚠️ @tractorsHere.Count
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+    <div class="fleet-details mt-4">
+        <h3>Fleet Details</h3>
+        <div class="tractors-list">
+            @if (Fleet.Count == 0)
+            {
+                <p class="text-muted">No tractors connected. Start TractorDriver instances to populate the fleet.</p>
+            }
+            else
+            {
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Position</th>
+                            <th>Status</th>
+                            <th>Battery</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var tractor in Fleet.Values.OrderBy(t => t.Id))
+                        {
+                            <tr class="tractor-row @(tractor.Status.ToLower())">
+                                <td><code>@tractor.Id.ToString().Substring(0, 8)</code></td>
+                                <td>(@tractor.X, @tractor.Y)</td>
+                                <td><span class="badge @GetStatusBadgeClass(tractor.Status)">@tractor.Status</span></td>
+                                <td>
+                                    <div class="battery-bar">
+                                        <div class="battery-fill" style="width: @(tractor.BatteryLevel)%; background: @GetBatteryColor(tractor.BatteryLevel);"></div>
+                                    </div>
+                                    <small>@tractor.BatteryLevel.ToString("F0")%</small>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private HubConnection? hubConnection;
+    private Dictionary<Guid, global::Swarm.Protocol.TractorState> Fleet = new();
+    private bool IsConnected { get; set; }
+    private string? ConnectionError { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl("http://localhost:5259/swarmhub")
+            .WithAutomaticReconnect()
+            .Build();
+
+        // Register handlers for incoming data
+        hubConnection.On<global::Swarm.Protocol.TractorState>("TractorJoined", (tractor) =>
+        {
+            Fleet[tractor.Id] = tractor;
+            InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.On<IEnumerable<global::Swarm.Protocol.TractorState>>("UpdateFleet", (tractors) =>
+        {
+            foreach (var tractor in tractors)
+            {
+                Fleet[tractor.Id] = tractor;
+            }
+            InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.Closed += async (error) =>
+        {
+            IsConnected = false;
+            ConnectionError = "Disconnected from Tower. Retrying...";
+            await InvokeAsync(StateHasChanged);
+            await TryConnectAsync();
+        };
+
+        await TryConnectAsync();
+    }
+
+    private async Task TryConnectAsync()
+    {
+        while (hubConnection!.State == HubConnectionState.Disconnected)
+        {
+            try
+            {
+                await hubConnection.StartAsync();
+                await hubConnection.InvokeAsync("JoinDashboard");
+                IsConnected = true;
+                ConnectionError = null;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+            catch (Exception ex)
+            {
+                IsConnected = false;
+                ConnectionError = $"Tower offline: {ex.Message.Split('(')[0].Trim()}";
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(3000); // retry every 3s
+            }
+        }
+    }
+
+    private string GetStatusBadgeClass(string status) => status switch
+    {
+        "Moving" => "bg-success",
+        "Idle" => "bg-info",
+        "Blocked" => "bg-warning",
+        _ => "bg-secondary"
+    };
+
+    private string GetBatteryColor(float battery) => battery switch
+    {
+        >= 75 => "#28a745",
+        >= 50 => "#ffc107",
+        >= 25 => "#fd7e14",
+        _ => "#dc3545"
+    };
+
+    async ValueTask IAsyncDisposable.DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+}
+
+<style>
+    .swarm-container {
+        padding: 20px;
+    }
+
+    .connection-status {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 20px;
+        padding: 10px;
+        background: #f8f9fa;
+        border-radius: 4px;
+        font-weight: 500;
+    }
+
+    .status-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        animation: pulse-animation 2s infinite;
+    }
+
+    @@keyframes pulse-animation {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    .status-indicator.connected {
+        background-color: #28a745;
+    }
+
+    .status-indicator.disconnected {
+        background-color: #dc3545;
+    }
+
+    .fleet-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+    }
+
+    .stat-card {
+        background: white;
+        padding: 15px;
+        border-radius: 6px;
+        border-left: 4px solid #007bff;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        text-align: center;
+    }
+
+    .stat-card label {
+        display: block;
+        font-size: 0.75rem;
+        font-weight: bold;
+        color: #6c757d;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+    }
+
+    .stat-card .value {
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 1.8rem;
+        font-weight: bold;
+        color: #212529;
+    }
+
+    .grid-viewport {
+        border: 2px solid #dee2e6;
+        border-radius: 6px;
+        overflow: auto;
+        background: white;
+        margin: 20px 0;
+    }
+
+    .swarm-grid {
+        display: inline-grid;
+    }
+
+    .swarm-cell {
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .swarm-cell:hover {
+        background: #e7f3ff !important;
+        border-color: #0066cc !important;
+    }
+
+    .swarm-cell.occupied {
+        background: #f0f8ff !important;
+    }
+
+    .tractor-icon {
+        font-size: 1.2rem;
+        position: relative;
+    }
+
+    .tractor-icon:hover .tractor-tooltip {
+        display: block;
+    }
+
+    .tractor-tooltip {
+        display: none;
+        position: absolute;
+        background: rgba(0,0,0,0.8);
+        color: white;
+        padding: 6px;
+        border-radius: 4px;
+        font-size: 0.65rem;
+        white-space: nowrap;
+        z-index: 10;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        margin-bottom: 4px;
+    }
+
+    .tractor-stack {
+        font-size: 0.9rem;
+        font-weight: bold;
+        color: #dc3545;
+    }
+
+    .fleet-details {
+        background: white;
+        padding: 20px;
+        border-radius: 6px;
+        border: 1px solid #dee2e6;
+    }
+
+    .tractors-list .table {
+        margin-bottom: 0;
+    }
+
+    .tractor-row.moving {
+        background: rgba(40, 167, 69, 0.1);
+    }
+
+    .tractor-row.idle {
+        background: rgba(23, 162, 184, 0.1);
+    }
+
+    .tractor-row.blocked {
+        background: rgba(255, 193, 7, 0.1);
+    }
+
+    .battery-bar {
+        width: 80px;
+        height: 8px;
+        background: #e9ecef;
+        border-radius: 4px;
+        overflow: hidden;
+        margin-bottom: 4px;
+    }
+
+    .battery-fill {
+        height: 100%;
+        transition: width 0.3s ease;
+    }
+</style>
