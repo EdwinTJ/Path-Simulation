@@ -44,74 +44,76 @@
         </div>
     </div>
 
-    <div class="grid-viewport">
-        <div class="swarm-grid" style="display: grid; grid-template-columns: repeat(20, 30px); gap: 1px; background: #f0f0f0; padding: 10px;">
-            @for (int y = 0; y < 20; y++)
-            {
-                @for (int x = 0; x < 20; x++)
+    <div class="dashboard-panels">
+        <div class="grid-viewport">
+            <div class="swarm-grid" style="display: grid; grid-template-columns: repeat(20, 30px); gap: 1px; background: #f0f0f0; padding: 10px;">
+                @for (int y = 0; y < 20; y++)
                 {
-                    var tractorsHere = Fleet.Values.Where(t => t.X == x && t.Y == y).ToList();
-                    <div class="swarm-cell @(tractorsHere.Any() ? "occupied" : "")"
-                         style="width: 30px; height: 30px; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; background: white; position: relative;">
-                        @if (tractorsHere.Count == 1)
-                        {
-                            <div class="tractor-icon" title="@tractorsHere[0].Id">
-                                🚜
-                                <div class="tractor-tooltip">
-                                    <small>@tractorsHere[0].Id.ToString().Substring(0, 8)</small><br/>
-                                    <small>Battery: @tractorsHere[0].BatteryLevel.ToString("F0")%</small><br/>
-                                    <small>Status: @tractorsHere[0].Status</small>
-                                </div>
-                            </div>
-                        }
-                        else if (tractorsHere.Count > 1)
-                        {
-                            <div class="tractor-stack" title="@string.Join(", ", tractorsHere.Select(t => t.Id.ToString().Substring(0, 8)))">
-                                ⚠️ @tractorsHere.Count
-                            </div>
-                        }
-                    </div>
-                }
-            }
-        </div>
-    </div>
-
-    <div class="fleet-details mt-4">
-        <h3>Fleet Details</h3>
-        <div class="tractors-list">
-            @if (Fleet.Count == 0)
-            {
-                <p class="text-muted">No tractors connected. Start TractorDriver instances to populate the fleet.</p>
-            }
-            else
-            {
-                <table class="table table-sm table-striped">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Position</th>
-                            <th>Status</th>
-                            <th>Battery</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var tractor in Fleet.Values.OrderBy(t => t.Id))
-                        {
-                            <tr class="tractor-row @(tractor.Status.ToLower())">
-                                <td><code>@tractor.Id.ToString().Substring(0, 8)</code></td>
-                                <td>(@tractor.X, @tractor.Y)</td>
-                                <td><span class="badge @GetStatusBadgeClass(tractor.Status)">@tractor.Status</span></td>
-                                <td>
-                                    <div class="battery-bar">
-                                        <div class="battery-fill" style="width: @(tractor.BatteryLevel)%; background: @GetBatteryColor(tractor.BatteryLevel);"></div>
+                    @for (int x = 0; x < 20; x++)
+                    {
+                        var tractorsHere = Fleet.Values.Where(t => t.X == x && t.Y == y).ToList();
+                        <div class="swarm-cell @(tractorsHere.Any() ? "occupied" : "")"
+                             style="width: 30px; height: 30px; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; background: white; position: relative;">
+                            @if (tractorsHere.Count == 1)
+                            {
+                                <div class="tractor-icon" title="@tractorsHere[0].Id">
+                                    🚜
+                                    <div class="tractor-tooltip">
+                                        <small>@tractorsHere[0].Id.ToString().Substring(0, 8)</small><br/>
+                                        <small>Battery: @tractorsHere[0].BatteryLevel.ToString("F0")%</small><br/>
+                                        <small>Status: @tractorsHere[0].Status</small>
                                     </div>
-                                    <small>@tractor.BatteryLevel.ToString("F0")%</small>
-                                </td>
+                                </div>
+                            }
+                            else if (tractorsHere.Count > 1)
+                            {
+                                <div class="tractor-stack" title="@string.Join(", ", tractorsHere.Select(t => t.Id.ToString().Substring(0, 8)))">
+                                    ⚠️ @tractorsHere.Count
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+
+        <div class="fleet-details">
+            <h3>Fleet Details</h3>
+            <div class="tractors-list">
+                @if (Fleet.Count == 0)
+                {
+                    <p class="text-muted">No tractors connected. Start TractorDriver instances to populate the fleet.</p>
+                }
+                else
+                {
+                    <table class="table table-sm table-striped">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Position</th>
+                                <th>Status</th>
+                                <th>Battery</th>
                             </tr>
-                        }
-                    </tbody>
-                </table>
-            }
+                        </thead>
+                        <tbody>
+                            @foreach (var tractor in Fleet.Values.OrderBy(t => t.Id))
+                            {
+                                <tr class="tractor-row @(tractor.Status.ToLower())">
+                                    <td><code>@tractor.Id.ToString().Substring(0, 8)</code></td>
+                                    <td>(@tractor.X, @tractor.Y)</td>
+                                    <td><span class="badge @GetStatusBadgeClass(tractor.Status)">@tractor.Status</span></td>
+                                    <td>
+                                        <div class="battery-bar">
+                                            <div class="battery-fill" style="width: @(tractor.BatteryLevel)%; background: @GetBatteryColor(tractor.BatteryLevel);"></div>
+                                        </div>
+                                        <small>@tractor.BatteryLevel.ToString("F0")%</small>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
         </div>
     </div>
 </div>
@@ -277,7 +279,15 @@
         border-radius: 6px;
         overflow: auto;
         background: white;
+        min-width: 0;
+    }
+
+    .dashboard-panels {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 20px;
         margin: 20px 0;
+        align-items: start;
     }
 
     .swarm-grid {
@@ -334,6 +344,7 @@
         padding: 20px;
         border-radius: 6px;
         border: 1px solid #dee2e6;
+        min-width: 0;
     }
 
     .tractors-list .table {
@@ -364,5 +375,11 @@
     .battery-fill {
         height: 100%;
         transition: width 0.3s ease;
+    }
+
+    @@media (max-width: 992px) {
+        .dashboard-panels {
+            grid-template-columns: 1fr;
+        }
     }
 </style>
